@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PastiBot · Residencia</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <div class="brand-name">PastiBot</div>
+        <div class="brand-sub">Residencia · dispensador robótico</div>
+      </div>
+    </div>
+
+    <div class="moments" id="moments"></div>
+
+    <div class="topbar-right">
+      <div class="clock" id="clock">--:--</div>
+      <div class="robot-status" id="robot-status">Conectando…</div>
+      <button class="icon-btn" data-action="voice" id="voice-btn" title="Voz on/off">🔊</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <main id="view"><div class="loading">Cargando…</div></main>
+
+  <footer class="hints">
+    <span><kbd>1</kbd>–<kbd>4</kbd> elegir residente</span>
+    <span><kbd>Enter</kbd> servir</span>
+    <span><kbd>Espacio</kbd> parar robot</span>
+    <span><kbd>Esc</kbd> cerrar</span>
+  </footer>
+
+  <div id="modal-root"></div>
+  <div id="toasts"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
