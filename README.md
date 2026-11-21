@@ -1,0 +1,1 @@
+# Hackaton-Lerobot2026-AsistentePastillas
