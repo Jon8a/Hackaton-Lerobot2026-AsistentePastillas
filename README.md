@@ -1,69 +1,131 @@
-# PastiBot · pastillero robótico para residencias
+# 💊 PastiBot · Dispensador robótico de medicación para residencias
 
-Interfaz + servidor para que el brazo de LeRobot sirva la medicación de cada residente
-según la toma del día (desayuno, comida, cena). Un modelo ACT por cuenco:
+> Proyecto para el **Hackathon LeRobot Bilbao 2026** ([hackathonbilbao.eus](https://hackathonbilbao.eus/home-page-es))
+> Brazo **SO-101** + **LeRobot** + políticas **ACT** entrenadas por imitación.
 
-| Cuenco | Pastilla | Medicamento |
-|---|---|---|
-| Verde | roja | Metformina |
-| Amarillo | naranja | Sintrom |
-| Azul | blanca | Lisinopril |
+## El problema
 
-## Arrancar
+En una residencia, el personal de enfermería prepara a mano cada día cientos de pastillas
+para muchas personas, cada una con su pauta distinta. Es un trabajo repetitivo y cansado,
+y los errores importan: una dosis olvidada o una **dosis doble de Sintrom** (anticoagulante)
+puede ser grave.
+
+## La solución
+
+PastiBot es un brazo robótico que prepara el vaso de medicación de cada residente:
+
+1. La enfermera abre la app y elige al residente. La toma (desayuno, comida o cena) se
+   selecciona sola según la hora.
+2. El robot coge del cuenco correspondiente cada pastilla que le toca y la deja en el vaso.
+3. La app lo anuncia en voz alta y lo registra.
+
+Además, la app:
+- **Bloquea las dosis dobles.** Repetir una toma exige confirmación, con un aviso específico
+  para el Sintrom.
+- **Avisa de tomas olvidadas** ("Josu no ha tomado el desayuno").
+- **Lleva el stock de cada cuenco** y avisa cuando hay que rellenar.
+- **Guarda un historial** de quién tomó qué y a qué hora.
+- **Tiene parada de emergencia** con la barra espaciadora.
+
+### Residentes de la demo
+
+| Residente | Desayuno | Comida | Cena |
+|---|---|---|---|
+| Maite | Metformina + Lisinopril | – | Metformina + Sintrom |
+| Josu | Lisinopril | Metformina | Sintrom |
+| Carmen | 2 × Metformina | Metformina | Metformina |
+| Andoni | Lisinopril | – | Sintrom + Metformina |
+
+## Cómo funciona por dentro
+
+```
+Navegador (localhost:8000) ──► server.py (FastAPI) ──► lerobot-rollout + modelo ACT del cuenco
+        ▲                            │
+        └──── estado cada 0,7 s ─────┘
+```
+
+En vez de un único modelo que tenga que decidir qué pastilla coger, entrenamos **un
+modelo ACT por cuenco**. La app decide qué toca y lanza, una tras otra, las políticas
+necesarias. Así cada modelo solo aprende un movimiento y la elección de medicamento la
+hace software determinista, que no se equivoca.
+
+| Cuenco | Pastilla | Medicamento | Dataset | Modelo ACT |
+|---|---|---|---|---|
+| 🔵 Azul | blanca | Lisinopril 10 mg | [ikercioBT/azul_total_prueba](https://huggingface.co/datasets/ikercioBT/azul_total_prueba) | [ikercioBT/act_azul](https://huggingface.co/ikercioBT/act_azul) |
+| 🟢 Verde | roja | Metformina 850 mg | _pendiente_ | [ikercioBT/act_verde](https://huggingface.co/ikercioBT/act_verde) |
+| 🟡 Amarillo | naranja | Sintrom 4 mg | _pendiente_ | [ikercioBT/act_amarillo](https://huggingface.co/ikercioBT/act_amarillo) |
+
+Todo está en la cuenta de Hugging Face del equipo: **[huggingface.co/ikercioBT](https://huggingface.co/ikercioBT)**.
+
+**Entrenamiento:** ACT, 50k steps, batch 8, en Hugging Face Jobs (`t4-small`).
+**Datos:** ~60–100 episodios por cuenco grabados por teleoperación, con dos cámaras
+(`Cabeza` en la pinza y `arriba` cenital, 640×480 a 30 fps).
+
+## Puesta en marcha
 
 ```bash
-pip install -r requirements.txt     # en el mismo entorno donde está lerobot
-python server.py --sim              # sin robot, para desarrollar y ensayar
-python server.py                    # con el robot de verdad
+conda activate lerobot
+pip install -r requirements.txt
+python server.py --sim      # sin robot, para probar la interfaz
+python server.py            # con el robot
 ```
 
 Abrir **http://localhost:8000**.
 
-## Antes de usar el robot real
+La configuración del robot, las cámaras y los modelos está en `backend/config.py`.
+Cada pastilla ejecuta:
 
-Editar solo `backend/config.py`:
-- `HF_USER`, `ROBOT` (puerto e id de calibración) y `CAMERAS` (mismos nombres que en la grabación).
-- `policy` de cada pastilla → el repo del modelo ACT de ese cuenco.
-- `DURATION_S` → lo que tarda una pastilla + un poco de margen.
+```bash
+lerobot-rollout --strategy.type=base --policy.path=ikercioBT/act_azul \
+  --robot.type=so101_follower --robot.port=/dev/ttyACM0 --robot.id=robot \
+  --robot.calibration_dir=~/.cache/huggingface/lerobot/calibration/robots/so_follower \
+  --robot.cameras="{ Cabeza: {...}, arriba: {...} }" --duration=20
+```
 
-Probad primero un modelo a mano con `lerobot-rollout ... --policy.path=...`. Si funciona ahí,
-funciona aquí: el servidor lanza exactamente ese comando (se ve en "Ver salida del robot").
+### Atajos de teclado
 
-## Estructura
+`1`–`4` elegir residente · `Enter` servir · `Espacio` **parar robot** · `Esc` cerrar.
+Antes de una demo: Ajustes → *Reiniciar el día*.
+
+## Estructura del código
 
 ```
-server.py              API (FastAPI) + sirve la interfaz
+server.py              API REST (FastAPI) + sirve la interfaz
 backend/
-  config.py            robot, cámaras, modelos, pastillas, tomas  ← lo que se toca
-  seed.py              los 4 residentes de demo
-  storage.py           datos en data/state.json, estado del día, stock, historial
-  robot.py             cola del robot: una ejecución de lerobot-rollout por pastilla
+  config.py            robot, cámaras, modelos, pastillas y tomas
+  seed.py              residentes de la demo
+  storage.py           datos (data/state.json), estado del día, stock, historial
+  robot.py             cola del robot: un lerobot-rollout por pastilla
 frontend/
-  index.html
-  css/styles.css
-  js/app.js            cabecera, pestañas, atajos, sondeo
-  js/api.js            llamadas al servidor
+  index.html, css/styles.css
+  js/app.js            cabecera, pestañas, atajos, sondeo del robot
+  js/api.js            llamadas a la API
   js/store.js          estado de la interfaz
-  js/ui.js, voice.js   utilidades y voz
-  js/views/            panel, servir (ventana), historial, ajustes
-data/state.json        se crea solo
+  js/views/            panel, servir, historial, ajustes
 ```
 
-## API
+### API
 
-| Método | Ruta | Para qué |
+| Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/health` | robot listo / simulación / ocupado |
 | GET | `/api/state` | residentes, estado de cada toma, stock, historial |
-| POST | `/api/serve` `{resident_id, moment, force}` | servir una toma (409 si ya se dio, salvo `force`) |
+| POST | `/api/serve` | servir una toma (`409` si ya se dio, salvo `force`) |
 | GET | `/api/jobs/{id}` | progreso pastilla a pastilla |
-| POST | `/api/stop` | parada |
-| PUT | `/api/pills/{key}` `{stock}` | stock de un cuenco |
-| PUT | `/api/residents/{id}` `{schedule}` | pauta de un residente |
-| POST | `/api/reset` `{scope: "day"\|"all"}` | reiniciar el día / datos de demo |
+| POST | `/api/stop` | parada de emergencia |
+| PUT | `/api/pills/{key}` | stock de un cuenco |
+| PUT | `/api/residents/{id}` | pauta de un residente |
+| POST | `/api/reset` | reiniciar el día / datos de demo |
 
-## Atajos (para la demo)
+## Siguientes pasos
 
-`1`–`4` residente · `Enter` servir · `Espacio` **parar robot** · `Esc` cerrar.
-Arriba se puede elegir la toma a mano (si presentáis a mediodía y queréis enseñar la cena).
-Antes de presentar: Ajustes → **Reiniciar el día**.
+- Cargar los 3 modelos una sola vez en un proceso persistente, para no tardar en arrancar cada pastilla.
+- Un vaso por residente y reconocimiento del residente (tarjeta NFC o cara).
+- Detección por visión de que la pastilla ha caído en el vaso.
+
+## Equipo
+
+Humildes · Hackathon LeRobot Bilbao, noviembre 2026.
+- Jon Ochoa Cerezo
+- Iker Martinez de Lizarduy
+- Rodrigo Villaluenga Cadiñanos
