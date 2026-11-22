@@ -39,13 +39,18 @@ function renderStatus() {
   const el = $('robot-status');
   let cls = 'off', text = 'Sin servidor';
   if (h?.ok) {
+    const w = h.worker;
     if (h.busy) { cls = 'busy'; text = 'Robot trabajando'; }
+    else if (w && w.state === 'loading') { cls = 'busy'; text = 'Cargando robot…'; }
+    else if (w && w.state === 'error') { cls = 'off'; text = 'Error del robot'; }
+    else if (w && w.mock) { cls = 'sim'; text = 'Brazo simulado'; }
     else if (h.simulate) { cls = 'sim'; text = 'Simulación'; }
     else if (!h.lerobot_found) { cls = 'off'; text = 'Falta lerobot'; }
     else { cls = 'ok'; text = 'Robot listo'; }
   }
   el.className = `robot-status ${cls}`;
   el.textContent = text;
+  el.title = h?.worker?.msg || '';
   $('voice-btn').classList.toggle('off', !voiceEnabled());
 }
 
@@ -82,6 +87,19 @@ onAction({
   refill: async (d) => {
     const p = store.state.pills.find((x) => x.key === d.key);
     await save(() => api.setStock(d.key, p.capacity), `${p.name} rellenado`);
+  },
+  robotHome: () => save(() => api.robotHome(), 'Volviendo a reposo'),
+  robotSetRest: async () => {
+    if (!confirm('¿Guardar la postura ACTUAL del brazo como reposo? El fin de cada ciclo se detecta comparando con ella.')) return;
+    await save(() => api.robotSetRest(), 'Postura de reposo guardada');
+  },
+  robotRestart: () => save(() => api.robotRestart(), 'Reiniciando el robot…'),
+  robotLog: async () => {
+    try {
+      const { log } = await api.robotLog();
+      store.robotLog = log;
+      emit();
+    } catch (e) { toast(e.message, 'err'); }
   },
   reset: async (d) => {
     const msg = d.scope === 'all'
@@ -147,8 +165,12 @@ async function pollHealth() {
   if (store.health.ok && !wasOk) await refresh();               // el servidor ha vuelto
   if (store.health.active_job && !modal.open && store.state) attachToJob(store.health.active_job);
   renderStatus();
+  // si cambia el estado del worker (cargando -> listo), refrescar Ajustes
+  const ws = `${store.health?.worker?.state}|${store.health?.busy}`;
+  if (ws !== lastWorkerState) { lastWorkerState = ws; if (store.view === 'settings') emit(); }
 }
 
+let lastWorkerState = null;
 let lastMoment = null;
 async function periodicRefresh() {
   // refresca de vez en cuando (por si cambia la toma con la hora), sin molestar mientras se edita

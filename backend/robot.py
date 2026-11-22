@@ -22,14 +22,16 @@ def build_cmd(key: str) -> list[str]:
         return list(p["cmd"])
     r = config.ROBOT
     return [
-        config.LEROBOT_ROLLOUT,
+        *config.ROLLOUT_CMD,
         "--strategy.type=base",                 # ejecuta la política sin grabar nada
         f"--policy.path={p['policy']}",
+        f"--policy.n_action_steps={config.N_ACTION_STEPS}",
+        "--policy.device=cpu",
         f"--robot.type={r['type']}",
         f"--robot.port={r['port']}",
         f"--robot.id={r['id']}",
         f"--robot.calibration_dir={r['calibration_dir']}",
-        f"--robot.cameras={config.CAMERAS}",
+        f"--robot.cameras={config.cameras_cli_string()}",
         f"--task={p['task']}",
         f"--duration={p.get('time', config.DURATION_S)}",
     ]
@@ -48,6 +50,8 @@ class Job:
         self.log: list[str] = []
         self.proc: subprocess.Popen | None = None
         self.stop = False
+        self.last_reason = ""
+        self.last_elapsed = None
 
     def add_log(self, line: str):
         self.log.append(line)
@@ -70,6 +74,7 @@ class RobotRunner:
         self.lock = threading.Lock()
         self.on_step_done = on_step_done
         self.on_finish = on_finish
+        self.worker = None          # WorkerClient cuando config.MODE == "worker"
 
     def start(self, picks, resident, moment, forced=False) -> Job:
         with self.lock:
@@ -86,6 +91,8 @@ class RobotRunner:
         if not job:
             return False
         job.stop = True
+        if self.worker:
+            self.worker.stop()
         proc = job.proc
         if proc and proc.poll() is None:
             # Linux: Ctrl+C para que lerobot suelte el brazo bien. Windows: terminate.
@@ -113,10 +120,12 @@ class RobotRunner:
                     step["state"] = "stopped"
                 elif rc == 0:
                     step["state"] = "done"
+                    step["took"] = job.last_elapsed
                     if self.on_step_done:
                         self.on_step_done(step["pill"])
                 else:
                     step["state"] = "error"
+                    step["reason"] = job.last_reason
                     job.state = "error"
                     for rest in job.steps[i + 1:]:
                         rest["state"] = "skipped"
@@ -136,6 +145,9 @@ class RobotRunner:
                     self.active = None
 
     def _run_step(self, job: Job, key: str) -> int:
+        job.last_reason, job.last_elapsed = "", None
+        if self.worker and not self.sim:
+            return self._run_step_worker(job, key)
         cmd = build_cmd(key)
         job.add_log("$ " + " ".join(cmd))
         if self.sim:
@@ -159,3 +171,20 @@ class RobotRunner:
         job.proc = None
         job.add_log(f"(terminó con código {rc})")
         return rc
+
+    def _run_step_worker(self, job: Job, key: str) -> int:
+        name = config.PILLS[key]["name"]
+        job.add_log(f"> {name}: modelo {config.PILLS[key]['policy']}")
+
+        def progress(msg):
+            job.add_log(f"  {msg['t']:>5}s  {msg['phase']:<10} dist {msg['dist']:>5}°  pinza {msg['grip']}")
+
+        ok, reason = self.worker.pick(job.id, key, on_progress=progress)
+        job.add_log(f"< {name}: {reason}")
+        job.last_reason = reason
+        if ok:
+            try:
+                job.last_elapsed = float(reason.rsplit("(", 1)[1].split()[0])
+            except (IndexError, ValueError):
+                pass
+        return 0 if ok else 1

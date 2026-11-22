@@ -41,18 +41,41 @@ function scheduleCard(residents, pills, moments) {
     </div>`;
 }
 
+const WORKER_STATE = { loading: 'Cargando…', ready: 'Listo', error: 'Error', off: 'Apagado' };
+
 function systemCard() {
   const h = store.health || {};
-  const mode = !h.ok ? 'Sin conexión con el servidor' : h.simulate ? 'Simulación (sin robot)' : 'Robot real';
+  const w = h.worker;
+  const mode = !h.ok ? 'Sin conexión con el servidor'
+    : h.mode === 'sim' ? 'Simulación (sin robot)'
+    : h.mode === 'worker' ? (w?.mock ? 'Worker con brazo simulado' : 'Worker (modelos cargados una vez)')
+    : 'Un lerobot-rollout por pastilla';
+  const models = Object.entries(h.models || {})
+    .map(([k, path]) => `<div><b>${esc(k)}</b>: <code>${esc(path)}</code></div>`).join('');
+  const robotButtons = w ? `
+      <div class="row-actions" style="margin-top:14px">
+        <button class="btn" data-action="robotHome" ${w.state !== 'ready' || h.busy ? 'disabled' : ''}>Llevar a reposo</button>
+        <button class="btn" data-action="robotSetRest" ${w.state !== 'ready' || h.busy ? 'disabled' : ''}>Guardar postura actual como reposo</button>
+        <button class="btn" data-action="robotRestart" ${h.busy ? 'disabled' : ''}>Reiniciar robot</button>
+        <button class="btn ghost" data-action="robotLog">Ver salida del robot</button>
+      </div>
+      ${store.robotLog ? `<div class="log-box" style="margin-top:12px"><pre>${esc(store.robotLog.join('\n'))}</pre></div>` : ''}` : '';
+
   return `
     <div class="settings-card">
-      <h2>Sistema</h2>
+      <h2>Robot</h2>
       <dl class="kv">
         <dt>Modo</dt><dd>${mode}</dd>
-        <dt>lerobot-rollout</dt><dd>${h.lerobot_found ? 'Encontrado' : '⚠ No encontrado (¿entorno activado?)'}</dd>
-        <dt>Modelos configurados</dt><dd>${esc((h.pills || []).join(', '))}</dd>
+        ${w ? `<dt>Estado</dt><dd>${WORKER_STATE[w.state] || esc(w.state)}${w.msg && w.msg !== 'Listo' ? ` — ${esc(w.msg)}` : ''}</dd>` : ''}
+        ${h.mode === 'cli' ? `<dt>lerobot-rollout</dt><dd>${h.lerobot_found ? 'Encontrado' : '⚠ No encontrado (¿entorno activado?)'}</dd>` : ''}
+        <dt>Modelos</dt><dd>${models}</dd>
       </dl>
-      <p class="help" style="margin-top:14px">El puerto, las cámaras y los modelos se cambian en <code>backend/config.py</code>.</p>
+      <p class="help" style="margin-top:14px">Puerto, cámaras, modelos y detección del fin de ciclo: <code>backend/config.py</code>.
+        El brazo tiene que estar en reposo al arrancar el servidor.</p>
+      ${robotButtons}
+    </div>
+    <div class="settings-card">
+      <h2>Demo</h2>
       <div class="row-actions">
         <button class="btn" data-action="reset" data-scope="day">Reiniciar el día (borra lo de hoy y rellena cuencos)</button>
         <button class="btn danger" data-action="reset" data-scope="all">Restaurar datos de demo</button>

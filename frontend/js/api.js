@@ -28,4 +28,8 @@ export const api = {
   setStock: (key, stock) => request('PUT', `/api/pills/${key}`, { stock }),
   setSchedule: (residentId, schedule) => request('PUT', `/api/residents/${residentId}`, { schedule }),
   reset: (scope) => request('POST', '/api/reset', { scope }),
+  robotHome: () => request('POST', '/api/robot/home'),
+  robotSetRest: () => request('POST', '/api/robot/rest'),
+  robotRestart: () => request('POST', '/api/robot/restart'),
+  robotLog: () => request('GET', '/api/robot/log'),
 };

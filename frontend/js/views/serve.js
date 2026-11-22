@@ -135,7 +135,7 @@ function stepItem(s) {
   const p = pillByKey(s.pill);
   return `<li class="step ${s.state}">${pillIcon(p)}
             <span>${esc(p.name)} <small class="meta">cuenco ${esc(p.bowl)}</small></span>
-            <span class="step-state">${STEP_LABEL[s.state] || s.state}</span></li>`;
+            <span class="step-state">${STEP_LABEL[s.state] || s.state}${s.took ? ` · ${s.took} s` : ''}</span></li>`;
 }
 
 function resultNotice() {
@@ -145,7 +145,8 @@ function resultNotice() {
   if (modal.jobState === 'stopped') return `<div class="notice warn">Robot parado. Se han servido ${done} de ${total}. Revisa el vaso antes de dárselo.</div>`;
   const failed = modal.steps.find((s) => s.state === 'error');
   const name = failed ? pillByKey(failed.pill).name : '';
-  return `<div class="notice err">✗ Ha fallado al coger ${esc(name)}. Se han servido ${done} de ${total}. Mira la salida del robot.</div>`;
+  const why = failed?.reason ? ` Motivo: ${esc(failed.reason)}.` : '';
+  return `<div class="notice err">✗ Ha fallado al coger ${esc(name)}.${why} Se han servido ${done} de ${total}.</div>`;
 }
 
 function confirmWarnings() {
