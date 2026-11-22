@@ -224,9 +224,15 @@ class CycleDetector:
         self.gmax = g if self.gmax is None else max(self.gmax, g)
 
         if not self.left:
-            self.left = self.dist > self.leave
+            # "ha salido" con las articulaciones grandes: al arrancar ACT a veces solo mueve
+            # la muñeca unos segundos y eso no cuenta como empezar
+            self.left = back_dist > self.leave
             return False
         if t < self.min_s:
+            return False
+        # Nunca se da por terminado sin haber cogido y soltado (si se atasca, salta max_s)
+        if self.grip_range < self.grip_needed:
+            self.at_rest_since = None
             return False
         # Vuelta a reposo: las articulaciones grandes cerca de reposo...
         near_rest = back_dist < self.back
