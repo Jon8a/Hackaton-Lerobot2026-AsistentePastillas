@@ -202,5 +202,8 @@ frontend/
 - Detección por visión de que la pastilla ha caído en el vaso.
 
 ## Equipo
-
-_Nombres del equipo_ · Hackathon LeRobot Bilbao, noviembre 2026.
+Humildes
+- Jon Ochoa Cereze
+- Rodrigo Villaluenga Cadiñanos
+- Iker Martinez de Lizarduy Cereijo
+ · Hackathon LeRobot Bilbao, noviembre 2026.
